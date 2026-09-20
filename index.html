@@ -1,0 +1,384 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#111827" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Money Splitter" />
+  <title>Money Splitter</title>
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <style>
+    :root{
+      --bg:#0b1220;
+      --panel:#111827;
+      --panel2:#172033;
+      --border:#2a364d;
+      --text:#f8fafc;
+      --muted:#9ca3af;
+      --accent:#60a5fa;
+      --good:#34d399;
+      --warn:#fbbf24;
+      --bad:#f87171;
+    }
+    *{box-sizing:border-box}
+    html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+    body{min-height:100vh}
+    .app{max-width:760px;margin:0 auto;padding:calc(18px + env(safe-area-inset-top)) 16px calc(28px + env(safe-area-inset-bottom))}
+    h1,h2,h3,p{margin-top:0}
+    h1{font-size:1.8rem;margin-bottom:6px}
+    .muted{color:var(--muted)}
+    .card{background:var(--panel);border:1px solid var(--border);border-radius:18px;padding:16px;margin-top:14px}
+    .row{display:flex;gap:12px;align-items:center}
+    .between{justify-content:space-between}
+    .wrap{flex-wrap:wrap}
+    label{display:block;font-size:.9rem;font-weight:700;margin-bottom:6px}
+    input,button{
+      font:inherit;
+      min-height:48px;
+      border-radius:14px;
+    }
+    input{
+      width:100%;
+      color:var(--text);
+      background:var(--panel2);
+      border:1px solid var(--border);
+      padding:0 14px;
+      font-size:1rem;
+      outline:none;
+    }
+    input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(96,165,250,.15)}
+    button{
+      border:1px solid var(--border);
+      padding:0 14px;
+      font-weight:800;
+      cursor:pointer;
+      color:var(--text);
+      background:var(--panel2);
+    }
+    button.primary{background:var(--accent);color:#06111f;border-color:transparent}
+    button.danger{border-color:#7f1d1d;background:#30151a;color:#fecaca}
+    .stack{display:grid;gap:12px}
+    .two{grid-template-columns:1fr 1fr}
+    .balance-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    .bucket{padding:14px;border:1px solid var(--border);border-radius:16px;background:var(--panel)}
+    .bucket .pct{font-size:.8rem;color:var(--muted)}
+    .bucket .amt{font-size:1.4rem;font-weight:900;margin:8px 0 12px}
+    .small{font-size:.88rem}
+    .history-item{padding:12px 0;border-top:1px solid var(--border)}
+    .history-item:first-child{border-top:0}
+    .plus{color:var(--good)}
+    .minus{color:var(--bad)}
+    .status{min-height:20px;margin-top:8px;font-size:.9rem}
+    .summary{font-size:2rem;font-weight:900}
+    dialog{
+      width:min(92vw,520px);
+      color:var(--text);
+      background:var(--panel);
+      border:1px solid var(--border);
+      border-radius:18px;
+      padding:18px;
+    }
+    dialog::backdrop{background:rgba(0,0,0,.65)}
+    @media (max-width:560px){
+      .two,.balance-grid{grid-template-columns:1fr}
+      .row.mobile-stack{flex-direction:column;align-items:stretch}
+      .summary{font-size:1.7rem}
+    }
+  </style>
+</head>
+<body>
+<main class="app">
+  <header>
+    <h1>Money Splitter</h1>
+    <p class="muted">35% investments · 35% savings · 10% wants · 20% needs</p>
+  </header>
+
+  <section class="card">
+    <div class="row between wrap">
+      <div>
+        <div class="muted small">Total available</div>
+        <div id="totalBalance" class="summary">$0.00</div>
+      </div>
+      <button id="installBtn" hidden>Install app</button>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Add income</h2>
+    <form id="incomeForm" class="row mobile-stack">
+      <div style="flex:1">
+        <label for="incomeAmount">Paycheck / income amount</label>
+        <input id="incomeAmount" inputmode="decimal" placeholder="0.00" autocomplete="off">
+      </div>
+      <button class="primary" type="submit">Split money</button>
+    </form>
+    <div id="incomeStatus" class="status muted" aria-live="polite"></div>
+  </section>
+
+  <section class="card">
+    <div class="row between wrap">
+      <div>
+        <h2 style="margin-bottom:4px">Your categories</h2>
+        <div class="muted small">Spend from any category and the remaining balance updates.</div>
+      </div>
+    </div>
+    <div id="bucketGrid" class="balance-grid" style="margin-top:14px"></div>
+  </section>
+
+  <section class="card">
+    <div class="row between wrap">
+      <div>
+        <h2 style="margin-bottom:4px">Activity</h2>
+        <div class="muted small">Newest first. You can undo any transaction.</div>
+      </div>
+      <button id="resetBtn" class="danger" type="button">Reset all</button>
+    </div>
+    <div id="history"></div>
+  </section>
+</main>
+
+<dialog id="spendDialog">
+  <form id="spendForm">
+    <h2 id="spendTitle">Spend money</h2>
+    <p id="spendAvailable" class="muted"></p>
+    <label for="spendAmount">Amount spent</label>
+    <input id="spendAmount" inputmode="decimal" placeholder="0.00" autocomplete="off">
+    <div id="spendStatus" class="status muted" aria-live="polite"></div>
+    <div class="row" style="margin-top:12px">
+      <button type="button" id="cancelSpend" style="flex:1">Cancel</button>
+      <button type="submit" class="primary" style="flex:1">Remove</button>
+    </div>
+  </form>
+</dialog>
+
+<script>
+(() => {
+  const categories = [
+    {key:'investments', name:'Investments', pct:35},
+    {key:'savings', name:'Savings', pct:35},
+    {key:'wants', name:'Wants', pct:10},
+    {key:'needs', name:'Needs', pct:20}
+  ];
+
+  const STORAGE_KEY = 'moneySplitterStateV1';
+  let state = loadState();
+  let spendKey = null;
+  let deferredPrompt = null;
+
+  const $ = id => document.getElementById(id);
+  const money = n => new Intl.NumberFormat('en-US', {style:'currency', currency:'USD'}).format(n || 0);
+
+  function freshState(){
+    return {
+      balances:{investments:0,savings:0,wants:0,needs:0},
+      history:[]
+    };
+  }
+
+  function loadState(){
+    try{
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if(!raw) return freshState();
+      const parsed = JSON.parse(raw);
+      const base = freshState();
+      for(const c of categories){
+        const v = Number(parsed?.balances?.[c.key]);
+        base.balances[c.key] = Number.isFinite(v) && v >= 0 ? Math.round(v*100)/100 : 0;
+      }
+      base.history = Array.isArray(parsed?.history) ? parsed.history.slice(0,500) : [];
+      return base;
+    }catch{
+      return freshState();
+    }
+  }
+
+  function saveState(){
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  }
+
+  function parseAmount(value){
+    const n = Number(String(value).replace(/[$,\s]/g,''));
+    if(!Number.isFinite(n)) return NaN;
+    return Math.round(n*100)/100;
+  }
+
+  function addHistory(entry){
+    state.history.unshift({
+      id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random(),
+      ts: Date.now(),
+      ...entry
+    });
+    state.history = state.history.slice(0,500);
+  }
+
+  function render(){
+    const total = Object.values(state.balances).reduce((a,b)=>a+b,0);
+    $('totalBalance').textContent = money(total);
+
+    const grid = $('bucketGrid');
+    grid.innerHTML = '';
+    categories.forEach(c => {
+      const el = document.createElement('article');
+      el.className = 'bucket';
+      el.innerHTML = `
+        <div class="row between">
+          <strong>${c.name}</strong>
+          <span class="pct">${c.pct}%</span>
+        </div>
+        <div class="amt">${money(state.balances[c.key])}</div>
+        <button type="button" data-spend="${c.key}" style="width:100%">Spend / remove</button>
+      `;
+      grid.appendChild(el);
+    });
+
+    const history = $('history');
+    if(!state.history.length){
+      history.innerHTML = '<p class="muted small" style="margin-top:14px">No activity yet.</p>';
+      return;
+    }
+    history.innerHTML = '';
+    state.history.slice(0,50).forEach(item => {
+      const el = document.createElement('div');
+      el.className = 'history-item';
+      const sign = item.type === 'income' ? '+' : '-';
+      const cls = item.type === 'income' ? 'plus' : 'minus';
+      const when = new Date(item.ts).toLocaleString();
+      el.innerHTML = `
+        <div class="row between wrap">
+          <div>
+            <strong>${item.label}</strong>
+            <div class="muted small">${when}</div>
+          </div>
+          <div class="row">
+            <strong class="${cls}">${sign}${money(item.amount)}</strong>
+            <button type="button" data-undo="${item.id}">Undo</button>
+          </div>
+        </div>
+      `;
+      history.appendChild(el);
+    });
+  }
+
+  $('incomeForm').addEventListener('submit', e => {
+    e.preventDefault();
+    const amount = parseAmount($('incomeAmount').value);
+    if(!Number.isFinite(amount) || amount <= 0 || amount > 100000000){
+      $('incomeStatus').textContent = 'Enter a valid amount above $0.';
+      return;
+    }
+    const split = {};
+    let assigned = 0;
+    categories.forEach((c, i) => {
+      let part;
+      if(i === categories.length - 1){
+        part = Math.round((amount - assigned) * 100) / 100;
+      }else{
+        part = Math.round(amount * c.pct) / 100;
+        assigned += part;
+      }
+      split[c.key] = part;
+      state.balances[c.key] = Math.round((state.balances[c.key] + part)*100)/100;
+    });
+    addHistory({type:'income', amount, label:'Income added', split});
+    saveState();
+    $('incomeAmount').value = '';
+    $('incomeStatus').textContent = `${money(amount)} split automatically.`;
+    render();
+  });
+
+  $('bucketGrid').addEventListener('click', e => {
+    const btn = e.target.closest('[data-spend]');
+    if(!btn) return;
+    spendKey = btn.dataset.spend;
+    const c = categories.find(x=>x.key===spendKey);
+    $('spendTitle').textContent = `Spend from ${c.name}`;
+    $('spendAvailable').textContent = `${money(state.balances[spendKey])} available`;
+    $('spendAmount').value = '';
+    $('spendStatus').textContent = '';
+    $('spendDialog').showModal();
+    setTimeout(()=>$('spendAmount').focus(),0);
+  });
+
+  $('cancelSpend').addEventListener('click', () => $('spendDialog').close());
+
+  $('spendForm').addEventListener('submit', e => {
+    e.preventDefault();
+    if(!spendKey) return;
+    const amount = parseAmount($('spendAmount').value);
+    if(!Number.isFinite(amount) || amount <= 0){
+      $('spendStatus').textContent = 'Enter a valid amount above $0.';
+      return;
+    }
+    if(amount > state.balances[spendKey]){
+      $('spendStatus').textContent = `You only have ${money(state.balances[spendKey])} available.`;
+      return;
+    }
+    state.balances[spendKey] = Math.round((state.balances[spendKey] - amount)*100)/100;
+    const c = categories.find(x=>x.key===spendKey);
+    addHistory({type:'spend', amount, category:spendKey, label:`Spent from ${c.name}`});
+    saveState();
+    $('spendDialog').close();
+    render();
+  });
+
+  $('history').addEventListener('click', e => {
+    const btn = e.target.closest('[data-undo]');
+    if(!btn) return;
+    const idx = state.history.findIndex(x=>x.id===btn.dataset.undo);
+    if(idx < 0) return;
+    const item = state.history[idx];
+
+    if(item.type === 'income'){
+      for(const c of categories){
+        const part = Number(item.split?.[c.key] || 0);
+        if(state.balances[c.key] < part){
+          alert(`Can't undo this income because some of its ${c.name} money has already been spent.`);
+          return;
+        }
+      }
+      for(const c of categories){
+        state.balances[c.key] = Math.round((state.balances[c.key] - Number(item.split?.[c.key] || 0))*100)/100;
+      }
+    } else if(item.type === 'spend'){
+      state.balances[item.category] = Math.round((state.balances[item.category] + item.amount)*100)/100;
+    }
+
+    state.history.splice(idx,1);
+    saveState();
+    render();
+  });
+
+  $('resetBtn').addEventListener('click', () => {
+    if(confirm('Reset every balance and delete all transaction history?')){
+      state = freshState();
+      saveState();
+      render();
+    }
+  });
+
+  window.addEventListener('beforeinstallprompt', e => {
+    e.preventDefault();
+    deferredPrompt = e;
+    $('installBtn').hidden = false;
+  });
+
+  $('installBtn').addEventListener('click', async () => {
+    if(!deferredPrompt) return;
+    deferredPrompt.prompt();
+    await deferredPrompt.userChoice;
+    deferredPrompt = null;
+    $('installBtn').hidden = true;
+  });
+
+  if('serviceWorker' in navigator){
+    window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(()=>{}));
+  }
+
+  render();
+})();
+</script>
+</body>
+</html>
